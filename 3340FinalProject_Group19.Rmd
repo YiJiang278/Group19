@@ -1,0 +1,161 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+```{r}
+insurance <- read.csv("~/Downloads/insurance 2.csv")
+library(fastDummies)
+insurance_group19 <- dummy_cols(insurance, select_columns =c('sex','smoker', 'region'),remove_selected_columns = TRUE)
+insurance_group19<-insurance_group19[,-5]
+insurance_group19<-insurance_group19[,-6]
+insurance_group19<-insurance_group19[,-10]
+```
+
+#Data Description
+```{r}
+pairs(insurance_group19)
+pairs(insurance_group19[c("age", "bmi", "children", "charges")])
+```
+
+```{r}
+library(ggplot2)
+ggplot(data = insurance,aes(region,charges))+geom_boxplot()+ggtitle("                         Figure3: Boxplot about Charges and Region")+theme_linedraw()
+ggplot(data = insurance,aes(sex,charges))+geom_boxplot()+ggtitle("                         Figure4: Boxplot about Charges and Sex")+theme_linedraw()
+ggplot(data = insurance,aes(smoker,charges))+geom_boxplot()+ggtitle("                         Figure5: Boxplot about Charges and Smoker")+theme_linedraw()
+```
+
+```{r}
+cor(insurance_group19)
+```
+
+#Model building
+```{r}
+model<-lm(charges~age+bmi+children+sex_male+smoker_yes+region_northeast+region_northwest+region_southeast,data=insurance_group19)
+summary(model)
+```
+
+```{r}
+library(car)
+vif(model)
+```
+
+```{r}
+plot(model)
+```
+
+#(a) full-model transformation 
+```{r}
+plot(lm(charges~1/age+bmi+children+sex_male+smoker_yes+region_northeast+region_northwest+region_southeast,data=insurance_group19))
+summary(lm(charges~1/age+bmi+children+sex_male+smoker_yes+region_northeast+region_northwest+region_southeast,data=insurance_group19))
+```
+
+#(b) leaps method
+```{r}
+library(leaps)
+data<-as.matrix(insurance_group19)
+leaps(x=data[,-4],y=data[,4],method="adjr2")
+```
+
+```{r}
+lmbest<-lm(charges~age+bmi+children+smoker_yes+region_northeast+region_northwest,data=insurance_group19)
+summary(lmbest)
+qqnorm(rstudent(lmbest),main="Normal QQ Plot of Externally Studentized Residuals")
+plot(fitted(lmbest),rstudent(lmbest),xlab="Fitted values",ylab="Externally Studentized Residuals", main="Externally Studentized Residuals vs Fitted values")
+```
+
+#(c) stepwise procedure method
+```{r}
+nullmodel<-lm(charges~1,data=insurance_group19)
+fullmodel1<-lm(charges~age+bmi+children+sex_male+smoker_yes+region_northeast+region_northwest+region_southeast,data=insurance_group19)
+step1<-step(nullmodel,scope=list(lower=nullmodel,upper=fullmodel1),direction="forward")
+```
+
+```{r}
+fullmodel2=lm(charges~smoker_yes*age+smoker_yes*bmi+age*bmi+age*children+bmi*region_northeast+bmi*region_northwest+bmi*region_southeast+children*region_northeast+children*region_northwest+children*region_southeast,data=insurance_group19)
+step2<-step(fullmodel2,direction="backward")
+```
+
+```{r}
+anova(step1,step2)
+summary(step2)
+```
+
+```{r}
+step3<-step(nullmodel,scope=list(lower=nullmodel,upper=fullmodel2),direction="both")
+summary(step3)
+```
+
+```{r}
+lmbest1<-lm(formula = charges ~ smoker_yes + age + bmi + children + region_northeast + 
+    region_northwest + smoker_yes:bmi + bmi:region_northeast + 
+    bmi:region_northwest + children:region_northwest, data = insurance_group19)
+plot(lmbest1)
+```
+
+```{r}
+lmbest2<-lm(charges ~ smoker_yes + age + bmi + children + region_northeast + 
+    region_northwest + region_southeast + smoker_yes:bmi + bmi:region_southeast + 
+    children:region_northwest, data = insurance_group19)
+plot(lmbest2)
+```
+
+
+#(d) k-fold validation
+```{r}
+library(caret)
+train_control <- trainControl(method = "cv",number=10) 
+model1 <- train(charges~age+bmi+children+smoker_yes+region_northeast+region_northwest,data=insurance_group19, method = "lm", trControl = train_control) 
+model1
+train_control <- trainControl(method = "cv",number=10) 
+model2 <- train(charges ~ smoker_yes + age + bmi + children + region_northeast + 
+    region_northwest + region_southeast + smoker_yes:bmi + bmi:region_southeast + 
+    children:region_northwest, data=insurance_group19, method = "lm", trControl = train_control) 
+model2
+train_control <- trainControl(method = "cv",number=10) 
+model3 <- train(charges ~ smoker_yes + age + bmi + children + region_northeast + 
+    region_northwest + smoker_yes:bmi + bmi:region_northeast + 
+    bmi:region_northwest + children:region_northwest, data = insurance_group19, method = "lm", trControl = train_control) 
+model3
+train_control <- trainControl(method = "cv",number=10) 
+model4<-train(charges~1/age+bmi+children+sex_male+smoker_yes+region_northeast+region_northwest+region_southeast, data=insurance_group19 , method = "lm", trControl = train_control)
+model4
+```
+
+
+#(e) Anova tests
+```{r}
+lmbest1<-lm(formula = charges ~ smoker_yes + age + bmi + children + region_northeast + 
+    region_northwest + smoker_yes:bmi + bmi:region_northeast + 
+    bmi:region_northwest + children:region_northwest, data = insurance_group19)
+lmbest2<-lm(charges ~ smoker_yes + age + bmi + children + region_northeast + 
+    region_northwest + region_southeast + smoker_yes:bmi + bmi:region_southeast + 
+    children:region_northwest, data = insurance_group19)
+summary(lmbest1)
+summary(lmbest2)
+anova(lmbest1)
+anova(lmbest2)
+```
+
+```{r}
+plot(lmbest1)
+```
+
+#(f) Model transformation
+```{r}
+library(MASS)
+bclm<- boxcox(charges ~ smoker_yes + age + bmi + children + region_northeast + 
+    region_northwest + smoker_yes:bmi + bmi:region_northeast + 
+    bmi:region_northwest + children:region_northwest, data = insurance_group19,plotit = T)
+bclm$x[which(bclm$y==max(bclm$y))] 
+```
+
+```{r}
+lmbest1_bc<- lm(((charges^0.2626263-1)/0.2626263) ~ smoker_yes + 1/age + bmi + children + region_northeast + region_northwest + smoker_yes:bmi + bmi:region_northeast + bmi:region_northwest + children:region_northwest, data = insurance_group19)
+plot(lmbest1_bc)
+summary(lmbest1_bc)
+```
+
+
+
